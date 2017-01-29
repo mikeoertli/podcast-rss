@@ -1,4 +1,4 @@
-#!/usr/bin/env ruby -wKU
+#!/usr/bin/env ruby -wKUd
 #
 # by Kelan Champagne http://yeahrightkeller.com
 # with edits by sjschultze
@@ -38,6 +38,7 @@
 # podcast_description = Orson Welles' radio drama, between 1951 and 1952
 # podcast_artwork = http://cl.ly/image/2x3y3A2l1P2S/01.%20Too%20Many%20Crooks.jpg
 # public_url_base = https://dl.dropboxusercontent.com/u/55322715/Audio/The%20Adventures%20Of%20Harry%20Lime
+# audio_category = Audiobook
 #
 # Todo:
 #  * Parse items' source date, instead of passing through
@@ -52,6 +53,7 @@
 
 require 'date'
 require 'erb'
+#require "id3tag"
 include ERB::Util
 
 # Set up user variables
@@ -59,6 +61,7 @@ podcast_title = ""
 podcast_description = ""
 podcast_artwork = ""
 public_url_base = ""
+item_category = "Podcasts"
 
 # Import configuration data
 podcast_infos = IO.readlines("config.txt")
@@ -75,6 +78,8 @@ podcast_infos.each {|i|
     when "public_url_base"
         public_url_base = i.split("=")[1].chomp
         puts "Found URL base: " + public_url_base
+    when "audio_category"
+        item_category = i.split("=")[1].chomp
     else
         puts "Unrecognised config data: " + i
     end
@@ -92,7 +97,7 @@ Dir.entries('.').each do |file|
     next if file =~ /^\./  # ignore invisible files
     next unless file =~ /\.(mp3|m4a)$/  # only use audio files
 
-    puts "adding file: #{file}"
+    puts "\nAdding audio file: #{file}"
 
     # Aquiring source metadata
     item_filename = File.basename(file, '').split('.mp3')[0]
@@ -105,6 +110,12 @@ Dir.entries('.').each do |file|
     item_text_comment = `ffprobe 2> /dev/null -show_format "#{file}" | grep TAG:comment= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
     item_duration_source = `ffprobe 2> /dev/null -show_format "#{file}" | grep duration_time= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
     item_pub_date_source = `ffprobe 2> /dev/null -show_format "#{file}" | grep TAG:date= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
+    item_metadata_full = `ffmpeg -loglevel quiet -i "#{file}" -an -vcodec copy -y "#{item_filename}".jpg`.chomp.to_s
+
+    item_artwork = "#{item_filename}"
+    item_artwork << ".jpg"
+    item_artwork_url = "#{public_url_base.gsub("https", "http")}/#{url_encode(item_artwork)}"
+
 
     # Convert number to ordinal
     if item_title_number != ""
@@ -147,7 +158,7 @@ Dir.entries('.').each do |file|
 
     # Figure out title base
     if item_title_source == ""
-        item_title_source = item_filename
+        item_title_source = item_filename.chomp()
     end
 
     # Set remaining metadata without logic
@@ -168,11 +179,12 @@ Dir.entries('.').each do |file|
             <itunes:subtitle>#{item_text_short}</itunes:subtitle>
             <itunes:summary>#{item_text_short}</itunes:summary>
             <enclosure url="#{item_url}" length="#{item_size_in_bytes}" type="audio/mpeg" />
-            <category>Podcasts</category>
+            <category>#{item_category}</category>
             <pubDate>#{item_pub_date}</pubDate>
             <guid>#{item_guid}</guid>
             <itunes:author>#{item_author}</itunes:author>
             <itunes:duration>#{item_duration}</itunes:duration>
+            <itunes:image href="#{item_artwork_url}"/>
         </item>
 HTML
 
@@ -223,8 +235,8 @@ output_file.close
 # 	end repeat
 #
 # 	tell application "Finder"
-# 		display dialog "cd " & the_folder_quoted & ";./generate_personal_podcast.rb"
-# 		do shell script "cd " & the_folder_quoted & ";./generate_personal_podcast.rb"
+# 		display dialog "cd " & the_folder_quoted & ";./podcast_feed_from_dropbox_mp3s.rb"
+# 		do shell script "cd " & the_folder_quoted & ";./podcast_feed_from_dropbox_mp3s.rb"
 # 	end tell
 #
 # end adding folder items to

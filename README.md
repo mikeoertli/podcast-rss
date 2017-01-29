@@ -16,3 +16,10 @@ root directory where you will keep the podcast.rss file.
 
 Once config.txt is setup, just run:
 >./podcast_feed_from_dropbox_mp3s.rb
+
+# Example config.txt
+The following lines are a template for your config.txt file; just remove the hashes:
+>podcast_title = The Adventures Of Harry Lime
+>podcast_description = Orson Welles' radio drama, between 1951 and 1952
+>podcast_artwork = http://cl.ly/image/2x3y3A2l1P2S/01.%20Too%20Many%20Crooks.jpg
+>public_url_base = https://dl.dropboxusercontent.com/u/1234567/Audio/
