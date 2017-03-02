@@ -1,4 +1,4 @@
-#!/usr/bin/env ruby -wKUd
+#!/usr/bin/env ruby -wUd
 #
 # by Kelan Champagne http://yeahrightkeller.com
 # with edits by sjschultze
@@ -15,20 +15,15 @@
 # ***********************************************************
 # ***********************************************************
 #
-# OERTLI TODO:
-# Support unique art work per audio file so that I can have a single feed
-# with multiple items in it, for example an audio books feed.
-#
-#
 # A script to generate a personal podcast feed, hosted on Dropbox
 #
 # Inspired by http://hints.macworld.com/article.php?story=20100421153627718
 #
 # Simply put this, and some .mp3 or .m4a files in a sub-dir under your Dropbox
-# Public folder, create your config.txt file in the same directory, and run the script.  To get
-# the public_url_base value, you can right click on a file in that folder
-# in Finder, then go to Dropbox > Copy Public Link, and then remove the
-# filename.
+# Public folder, create your config.txt file in the same directory, and run the
+# script. To get the public_url_base value, you can right click on a file in
+# that folderin Finder, then go to Dropbox > Copy Public Link, and then remove
+# the filename.
 # iTunes recommends artwork in the JPEG or PNG file formats and in the RGB color space
 # with a minimum size of 1400 x 1400 pixels and a maximum size of 2048 x 2048 pixels.
 # You'll need a *direct* link to the image, hosted wherever you want. I use cl.ly.
@@ -40,10 +35,6 @@
 # public_url_base = https://dl.dropboxusercontent.com/u/55322715/Audio/The%20Adventures%20Of%20Harry%20Lime
 # audio_category = Audiobook
 #
-# Todo:
-#  * Parse items' source date, instead of passing through
-#  * Do even more sanitising of the metadata.
-#
 # Notes:
 #  * You'll need to re-run it after adding new files to the dir, or you can
 #    set up Folder Actions as suggested by the above hint (sample AppleScript
@@ -53,7 +44,6 @@
 
 require 'date'
 require 'erb'
-#require "id3tag"
 include ERB::Util
 
 # Set up user variables
@@ -63,6 +53,7 @@ podcast_artwork = ""
 public_url_base = ""
 item_category = "Podcasts"
 
+puts "\nEvaluating Podcast RSS Feed Configuration..."
 # Import configuration data
 podcast_infos = IO.readlines("config.txt")
 podcast_infos.select {|i|i.start_with?('#') == false} # Ignore comment lines in input
@@ -71,13 +62,14 @@ podcast_infos.each {|i|
     case id
     when "podcast_title"
         podcast_title = i.split("=")[1].chomp
+        puts "Creating podcast feed titled: " + podcast_title
     when "podcast_description"
         podcast_description = i.split("=")[1].chomp
     when "podcast_artwork"
         podcast_artwork = i.split("=")[1].chomp
     when "public_url_base"
         public_url_base = i.split("=")[1].chomp
-        puts "Found URL base: " + public_url_base
+        puts "Found Podcast public URL base: " + public_url_base
     when "audio_category"
         item_category = i.split("=")[1].chomp
     else
@@ -87,17 +79,16 @@ podcast_infos.each {|i|
 
 # Generated values
 date_format = '%a, %d %b %Y %H:%M:%S %z'
-podcast_pub_date = DateTime.now.strftime(date_format)
+current_date_time = DateTime.now.strftime(date_format)
 
+puts "\nAdding audio files to podcast feed..."
 # Build the items
 items_content = ""
 Dir.entries('.').each do |file|
-	puts file
-
     next if file =~ /^\./  # ignore invisible files
     next unless file =~ /\.(mp3|m4a)$/  # only use audio files
 
-    puts "\nAdding audio file: #{file}"
+    puts "Processing file: #{file}"
 
     # Aquiring source metadata
     item_filename = File.basename(file, '').split('.mp3')[0]
@@ -109,13 +100,13 @@ Dir.entries('.').each do |file|
     item_text_synopsis = `ffprobe 2> /dev/null -show_format "#{file}" | grep TAG:synopsis= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s # Also known as 'long description'
     item_text_comment = `ffprobe 2> /dev/null -show_format "#{file}" | grep TAG:comment= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
     item_duration_source = `ffprobe 2> /dev/null -show_format "#{file}" | grep duration_time= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
-    item_pub_date_source = `ffprobe 2> /dev/null -show_format "#{file}" | grep TAG:date= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
-    item_metadata_full = `ffmpeg -loglevel quiet -i "#{file}" -an -vcodec copy -y "#{item_filename}".jpg`.chomp.to_s
+    #item_pub_date_source = `ffprobe 2> /dev/null -show_format "#{file}" | grep TAG:date= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
+    #item_metadata_full = `ffmpeg -loglevel quiet -i "#{file}" -an -vcodec copy -y "#{item_filename}".jpg`.chomp.to_s
 
     item_artwork = "#{item_filename}"
     item_artwork << ".jpg"
     item_artwork_url = "#{public_url_base.gsub("https", "http")}/#{url_encode(item_artwork)}"
-
+    item_time_modified = File.mtime(file).strftime(date_format)
 
     # Convert number to ordinal
     if item_title_number != ""
@@ -168,8 +159,8 @@ Dir.entries('.').each do |file|
     item_url = "#{public_url_base.gsub("https", "http")}/#{url_encode(file)}"
     item_size_in_bytes = File.size(file).to_s
     item_duration = item_duration_source
-    item_pub_date = item_pub_date_source
-    item_guid = item_url + url_encode(podcast_pub_date)
+    #item_pub_date = item_pub_date_source
+    item_guid = item_url + url_encode(item_time_modified)
 
 
     item_content = <<-HTML
@@ -180,7 +171,7 @@ Dir.entries('.').each do |file|
             <itunes:summary>#{item_text_short}</itunes:summary>
             <enclosure url="#{item_url}" length="#{item_size_in_bytes}" type="audio/mpeg" />
             <category>#{item_category}</category>
-            <pubDate>#{item_pub_date}</pubDate>
+            <pubDate>#{item_time_modified}</pubDate>
             <guid>#{item_guid}</guid>
             <itunes:author>#{item_author}</itunes:author>
             <itunes:duration>#{item_duration}</itunes:duration>
@@ -197,7 +188,7 @@ content = <<-HTML
     <channel>
         <title>#{podcast_title}</title>
         <description>#{podcast_description}</description>
-        <pubDate>#{podcast_pub_date}</pubDate>
+        <pubDate>#{current_date_time}</pubDate>
         <itunes:image href="#{podcast_artwork}"/>
         <itunes:subtitle>#{podcast_description.to_s[0,254]}</itunes:subtitle>
         <itunes:summary>#{podcast_description.to_s[0,3999]}</itunes:summary>
