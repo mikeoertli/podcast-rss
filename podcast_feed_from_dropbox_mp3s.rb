@@ -101,7 +101,9 @@ Dir.entries('.').each do |file|
     item_text_comment = `ffprobe 2> /dev/null -show_format "#{file}" | grep TAG:comment= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
     item_duration_source = `ffprobe 2> /dev/null -show_format "#{file}" | grep duration_time= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
     #item_pub_date_source = `ffprobe 2> /dev/null -show_format "#{file}" | grep TAG:date= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
-    #item_metadata_full = `ffmpeg -loglevel quiet -i "#{file}" -an -vcodec copy -y "#{item_filename}".jpg`.chomp.to_s
+
+    # Create the artwork image file
+    `ffmpeg -loglevel quiet -i "#{file}" -an -vcodec copy -y "#{item_filename}".jpg`.chomp.to_s
 
     item_artwork = "#{item_filename}"
     item_artwork << ".jpg"
