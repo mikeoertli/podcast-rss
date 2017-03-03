@@ -8,6 +8,10 @@ in a source repo by Kelan, so for now I'm working in my repo instead of a fork.
 This works well for mp3 or m4a files to create a podcast feed from audiobooks
 or audio that doesn't come via a public RSS format.
 
+###NOTICE ABOUT DROPBOX PUBLIC FOLDERS
+Thanks to new Dropbox policies going into effect on March 15, 2017, public folders are going away. I am planning to make sure this script supports other cloud providers, likely focusing on Google Drive first. I expect it should work as long as you have the files downloaded to a local folder and can find a base URL that is valid.
+
+
 ###TO RUN
 Right now, this script requires being located in the same directory as the
 source audio files and requires a config.txt file that configures the
