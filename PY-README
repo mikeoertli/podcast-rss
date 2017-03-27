@@ -12,3 +12,13 @@ git clone https://github.com/dropbox/dropbox-sdk-python.git
 python setup.py install
 
 ## FFPROBE - used to analyze the metadata for audio files
+
+
+## Example configuration file
+    [Dropbox]
+    token = <generated token from Dropbox>
+
+    [Podcast]
+    podcast_title = "Audible Dev"
+    podcast_description = "Audio Books"
+    podcast_artwork =
