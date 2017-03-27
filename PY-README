@@ -1,0 +1,14 @@
+# podcast-rss
+Python version that pulls in the full Dropbox API due to their recent changes
+about public folders. We can no longer predictably create the public URL,
+the full API is now required to use REST calls to get the information we
+need.
+
+# Setps to take before this will work
+
+## FFMPEG - used to create per-file album artwork
+pip install ffmpy
+git clone https://github.com/dropbox/dropbox-sdk-python.git
+python setup.py install
+
+## FFPROBE - used to analyze the metadata for audio files
