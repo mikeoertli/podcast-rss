@@ -26,7 +26,8 @@
 # the filename.
 # iTunes recommends artwork in the JPEG or PNG file formats and in the RGB color space
 # with a minimum size of 1400 x 1400 pixels and a maximum size of 2048 x 2048 pixels.
-# You'll need a *direct* link to the image, hosted wherever you want. I use cl.ly.
+# You'll need a *direct* link to the image. This supports artwork per podcast
+# feed and per MP3 file (the latter extracts the image from the ID3 tag).
 #
 # The following lines are a template for your config.txt file; just remove the hashes:
 # podcast_title = The Adventures Of Harry Lime
@@ -68,7 +69,7 @@ podcast_infos.each {|i|
     when "podcast_artwork"
         podcast_artwork = i.split("=")[1].chomp
     when "public_url_base"
-        public_url_base = i.split("=")[1].chomp
+        public_url_base = i.split("=")[1].chomp.chomp("/") + "?preview="
         puts "Found Podcast public URL base: " + public_url_base
     when "audio_category"
         item_category = i.split("=")[1].chomp
