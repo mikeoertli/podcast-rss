@@ -69,7 +69,7 @@ podcast_infos.each {|i|
     when "podcast_artwork"
         podcast_artwork = i.split("=")[1].chomp
     when "public_url_base"
-        public_url_base = i.split("=")[1].chomp.chomp("/") + "?preview="
+        public_url_base = i.split("=")[1].chomp.chomp("/")
         puts "Found Podcast public URL base: " + public_url_base
     when "audio_category"
         item_category = i.split("=")[1].chomp
@@ -92,7 +92,13 @@ Dir.entries('.').each do |file|
     puts "Processing file: #{file}"
 
     # Aquiring source metadata
+    item_audio_type = "audio/mpeg"
+    if file =~ /\.(m4a)$/
+        item_audio_type = "audio/x-m4a"
+    end
+
     item_filename = File.basename(file, '').split('.mp3')[0]
+    item_filename = File.basename(file, '').split('.m4a')[0]
     item_title_number = `ffprobe 2> /dev/null -show_format "#{file}" | grep TAG:track= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
     item_title_source = `ffprobe 2> /dev/null -show_format "#{file}" | grep TAG:title= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
     item_text_artist = `ffprobe 2> /dev/null -show_format "#{file}" | grep TAG:artist= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
@@ -101,6 +107,10 @@ Dir.entries('.').each do |file|
     item_text_synopsis = `ffprobe 2> /dev/null -show_format "#{file}" | grep TAG:synopsis= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s # Also known as 'long description'
     item_text_comment = `ffprobe 2> /dev/null -show_format "#{file}" | grep TAG:comment= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
     item_duration_source = `ffprobe 2> /dev/null -show_format "#{file}" | grep duration_time= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
+    print "Duration time: " + item_duration_source
+    if item_duration_source = ""
+        item_duration_source = `ffprobe 2> /dev/null -show_format "#{file}" | grep duration= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
+    end
     #item_pub_date_source = `ffprobe 2> /dev/null -show_format "#{file}" | grep TAG:date= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
 
     # Create the artwork image file
@@ -165,14 +175,13 @@ Dir.entries('.').each do |file|
     #item_pub_date = item_pub_date_source
     item_guid = item_url + url_encode(item_time_modified)
 
-
     item_content = <<-HTML
         <item>
             <title>#{item_title}</title>
             <description>#{item_text_long}</description>
             <itunes:subtitle>#{item_text_short}</itunes:subtitle>
             <itunes:summary>#{item_text_short}</itunes:summary>
-            <enclosure url="#{item_url}" length="#{item_size_in_bytes}" type="audio/mpeg" />
+            <enclosure url="#{item_url}" length="#{item_size_in_bytes}" type="#{item_audio_type}" />
             <category>#{item_category}</category>
             <pubDate>#{item_time_modified}</pubDate>
             <guid>#{item_guid}</guid>
