@@ -14,6 +14,12 @@ Thanks to new Dropbox policies going into effect on March 15, 2017, public
 folders are going away. For foreseeable future, this script assumes you have
 somewhere to host files, it is agnostic as to that location.
 
+###HOSTING FILES
+I recommend a Linode instance, they start at $5/month. You can host it yourself
+very easily too, but keep in mind that the root directory you use might need
+to be publicly visible (for Overcast it does - the Overcast server needs to be
+able to query the directory you put these files in.)
+
 
 ###TO RUN
 Right now, this script requires being located in the same directory as the
