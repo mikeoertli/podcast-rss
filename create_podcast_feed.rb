@@ -123,7 +123,7 @@ Dir.entries(audio_directory).each do |file|
     item_text_synopsis = `ffprobe 2> /dev/null -show_format "#{file_path}" | grep TAG:synopsis= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s # Also known as 'long description'
     item_text_comment = `ffprobe 2> /dev/null -show_format "#{file_path}" | grep TAG:comment= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
     item_duration_source = `ffprobe 2> /dev/null -show_format "#{file_path}" | grep duration_time= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
-    if item_duration_source = ""
+    if item_duration_source == ""
         item_duration_source = `ffprobe 2> /dev/null -show_format "#{file_path}" | grep duration= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
     end
     puts "Duration (sec): #{item_duration_source}"
@@ -131,12 +131,21 @@ Dir.entries(audio_directory).each do |file|
     # Create the artwork image file
     `ffmpeg -loglevel quiet -i "#{file_path}" -an -vcodec copy -y "#{artwork_directory}/#{item_filename}".jpg`.chomp.to_s
 
-    item_artwork = "#{artwork_directory}/#{item_filename}"
+    item_artwork = "#{item_filename}"
     item_artwork << ".jpg"
 
-    puts "Created image file: #{item_artwork}"
+    puts "Created image file: #{artwork_directory}/#{item_artwork}"
 
-    item_artwork_url = "#{public_url_base.gsub("https", "http")}/#{url_encode(item_artwork)}"
+#    encoded_relative_art_path = ""
+    if artwork_directory == ""
+        encoded_relative_art_path = "#{url_encode(item_artwork)}"
+    else
+        encoded_relative_art_path = "#{url_encode(artwork_directory)}/#{url_encode(item_artwork)}"
+    end
+
+#    item_artwork_url = "#{public_url_base.gsub("https", "http")}/#{url_encode(artwork_directory)}/#{url_encode(item_artwork)}"
+    item_artwork_url = "#{public_url_base.gsub("https", "http")}/#{encoded_relative_art_path}"
+
     item_time_modified = File.mtime(file_path).strftime(date_format)
 
     # Convert number to ordinal
