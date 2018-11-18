@@ -3,7 +3,7 @@
 # by Kelan Champagne http://yeahrightkeller.com
 # with edits by sjschultze
 # and advanced metadata handling by lukf
-# and stupid things by mikeoertli
+# and features/enhancements by mikeoertli
 #
 # ***********************************************************
 # ***********************************************************
@@ -19,11 +19,17 @@
 #
 # Inspired by http://hints.macworld.com/article.php?story=20100421153627718
 #
-# Simply put this, and some .mp3 or .m4a files in a sub-dir under your Dropbox
-# Public folder, create your config.txt file in the same directory, and run the
-# script. To get the public_url_base value, you can right click on a file in
-# that folderin Finder, then go to Dropbox > Copy Public Link, and then remove
-# the filename.
+# Simply put this, and some .mp3 or .m4a files in a sub-dir under a public folder
+# on the web (i.e. server), create your config.txt file in the same directory, and run the
+# script. The public_url_base value value is just the URL of the directory that will contain
+# the output RSS file. It is assumed that the structure looks like this:
+#   <public_url_base>
+#      <audio_directory>
+#      <image_directory>
+#      config.txt
+#      podcast.rss (output file)
+# 
+#
 # iTunes recommends artwork in the JPEG or PNG file formats and in the RGB color space
 # with a minimum size of 1400 x 1400 pixels and a maximum size of 2048 x 2048 pixels.
 # You'll need a *direct* link to the image. This supports artwork per podcast
@@ -33,8 +39,10 @@
 # podcast_title = The Adventures Of Harry Lime
 # podcast_description = Orson Welles' radio drama, between 1951 and 1952
 # podcast_artwork = http://cl.ly/image/2x3y3A2l1P2S/01.%20Too%20Many%20Crooks.jpg
-# public_url_base = https://dl.dropboxusercontent.com/u/55322715/Audio/The%20Adventures%20Of%20Harry%20Lime
+# public_url_base = https://www.myserver.com/podcast/
 # audio_category = Audiobook
+# artwork_directory = images
+# audio_directory = audio
 #
 # Notes:
 #  * You'll need to re-run it after adding new files to the dir, or you can
@@ -53,6 +61,8 @@ podcast_description = ""
 podcast_artwork = ""
 public_url_base = ""
 item_category = "Podcasts"
+audio_directory = "."
+artwork_directory = "."
 
 puts "\nEvaluating Podcast RSS Feed Configuration..."
 # Import configuration data
@@ -73,6 +83,10 @@ podcast_infos.each {|i|
         puts "Found Podcast public URL base: " + public_url_base
     when "audio_category"
         item_category = i.split("=")[1].chomp
+    when "audio_directory"
+        audio_directory = i.split("=")[1].chomp
+    when "artwork_directory"
+        artwork_directory = i.split("=")[1].chomp
     else
         puts "Unrecognised config data: " + i
     end
@@ -85,41 +99,54 @@ current_date_time = DateTime.now.strftime(date_format)
 puts "\nAdding audio files to podcast feed..."
 # Build the items
 items_content = ""
-Dir.entries('.').each do |file|
+Dir.entries(audio_directory).each do |file|
     next if file =~ /^\./  # ignore invisible files
     next unless file =~ /\.(mp3|m4a)$/  # only use audio files
 
-    puts "Processing file: #{file}"
+    file_path = "#{audio_directory}/#{file}"
+    puts "Processing file: #{file_path}"
 
     # Aquiring source metadata
     item_audio_type = "audio/mpeg"
     if file =~ /\.(m4a)$/
         item_audio_type = "audio/x-m4a"
+        item_filename = File.basename(file, '').split('.m4a')[0]
+    else
+        item_filename = File.basename(file, '').split('.mp3')[0]
     end
 
-    item_filename = File.basename(file, '').split('.mp3')[0]
-    item_filename = File.basename(file, '').split('.m4a')[0]
-    item_title_number = `ffprobe 2> /dev/null -show_format "#{file}" | grep TAG:track= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
-    item_title_source = `ffprobe 2> /dev/null -show_format "#{file}" | grep TAG:title= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
-    item_text_artist = `ffprobe 2> /dev/null -show_format "#{file}" | grep TAG:artist= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
-    item_text_albumartist = `ffprobe 2> /dev/null -show_format "#{file}" | grep TAG:albumartist= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
-    item_text_description = `ffprobe 2> /dev/null -show_format "#{file}" | grep TAG:description= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
-    item_text_synopsis = `ffprobe 2> /dev/null -show_format "#{file}" | grep TAG:synopsis= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s # Also known as 'long description'
-    item_text_comment = `ffprobe 2> /dev/null -show_format "#{file}" | grep TAG:comment= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
-    item_duration_source = `ffprobe 2> /dev/null -show_format "#{file}" | grep duration_time= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
-    print "Duration time: " + item_duration_source
-    if item_duration_source = ""
-        item_duration_source = `ffprobe 2> /dev/null -show_format "#{file}" | grep duration= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
+    item_title_number = `ffprobe 2> /dev/null -show_format "#{file_path}" | grep TAG:track= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
+    item_title_source = `ffprobe 2> /dev/null -show_format "#{file_path}" | grep TAG:title= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
+    item_text_artist = `ffprobe 2> /dev/null -show_format "#{file_path}" | grep TAG:artist= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
+    item_text_albumartist = `ffprobe 2> /dev/null -show_format "#{file_path}" | grep TAG:albumartist= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
+    item_text_description = `ffprobe 2> /dev/null -show_format "#{file_path}" | grep TAG:description= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
+    item_text_synopsis = `ffprobe 2> /dev/null -show_format "#{file_path}" | grep TAG:synopsis= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s # Also known as 'long description'
+    item_text_comment = `ffprobe 2> /dev/null -show_format "#{file_path}" | grep TAG:comment= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
+    item_duration_source = `ffprobe 2> /dev/null -show_format "#{file_path}" | grep duration_time= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
+    if item_duration_source == ""
+        item_duration_source = `ffprobe 2> /dev/null -show_format "#{file_path}" | grep duration= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
     end
-    #item_pub_date_source = `ffprobe 2> /dev/null -show_format "#{file}" | grep TAG:date= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
+    puts "Duration (sec): #{item_duration_source}"
 
     # Create the artwork image file
-    `ffmpeg -loglevel quiet -i "#{file}" -an -vcodec copy -y "#{item_filename}".jpg`.chomp.to_s
+    `ffmpeg -loglevel quiet -i "#{file_path}" -an -vcodec copy -y "#{artwork_directory}/#{item_filename}".jpg`.chomp.to_s
 
     item_artwork = "#{item_filename}"
     item_artwork << ".jpg"
-    item_artwork_url = "#{public_url_base.gsub("https", "http")}/#{url_encode(item_artwork)}"
-    item_time_modified = File.mtime(file).strftime(date_format)
+
+    puts "Created image file: #{artwork_directory}/#{item_artwork}"
+
+#    encoded_relative_art_path = ""
+    if artwork_directory == ""
+        encoded_relative_art_path = "#{url_encode(item_artwork)}"
+    else
+        encoded_relative_art_path = "#{url_encode(artwork_directory)}/#{url_encode(item_artwork)}"
+    end
+
+#    item_artwork_url = "#{public_url_base.gsub("https", "http")}/#{url_encode(artwork_directory)}/#{url_encode(item_artwork)}"
+    item_artwork_url = "#{public_url_base.gsub("https", "http")}/#{encoded_relative_art_path}"
+
+    item_time_modified = File.mtime(file_path).strftime(date_format)
 
     # Convert number to ordinal
     if item_title_number != ""
@@ -168,11 +195,9 @@ Dir.entries('.').each do |file|
     # Set remaining metadata without logic
     item_title = item_title_number + item_title_source
 
-    # Need to append ?dl=1 to force the download rather than trying to render it in the browser?
-    item_url = "#{public_url_base.gsub("https", "http")}/#{url_encode(file)}"
-    item_size_in_bytes = File.size(file).to_s
+    item_url = "#{public_url_base.gsub("https", "http")}/#{url_encode(audio_directory)}/#{url_encode(file)}"
+    item_size_in_bytes = File.size(file_path).to_s
     item_duration = item_duration_source
-    #item_pub_date = item_pub_date_source
     item_guid = item_url + url_encode(item_time_modified)
 
     item_content = <<-HTML
