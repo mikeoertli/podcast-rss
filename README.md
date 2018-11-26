@@ -9,19 +9,19 @@ in a source repo by Kelan, so for now I'm working in my repo instead of a fork.
 This works well for mp3 or m4a files to create a podcast feed from audiobooks
 or audio that doesn't come via a public RSS format.
 
-###NOTICE ABOUT DROPBOX PUBLIC FOLDERS
+### NOTICE ABOUT DROPBOX PUBLIC FOLDERS
 Thanks to new Dropbox policies going into effect on March 15, 2017, public
 folders are going away. For foreseeable future, this script assumes you have
 somewhere to host files, it is agnostic as to that location.
 
-###HOSTING FILES
+### HOSTING FILES
 I recommend a Linode instance, they start at $5/month. You can host it yourself
 very easily too, but keep in mind that the root directory you use might need
 to be publicly visible (for Overcast it does - the Overcast server needs to be
 able to query the directory you put these files in.)
 
 
-###TO RUN
+### TO RUN
 Right now, this script requires being located in the same directory as the
 source audio files and requires a config.txt file that configures the
 output podcast name, author, artwork, and the URL of the public Dropbox
@@ -31,7 +31,15 @@ Once config.txt is setup, just run:
 >./create_podcast_feed.rb
 
 ## Example config.txt
->podcast_title = My Podcast
->podcast_description = My very interesting podcast
->podcast_artwork = http://www.wilwheaton.net/mt/archives/evil_monkey.gif
->public_url_base = http://123.456.789.0/audio/
+```
+podcast_title =My Podcast
+podcast_description  My very interesting podcast
+podcast_artwork =http://www.wilwheaton.net/mt/archives/evil_monkey.gif
+public_url_base =http://123.456.789.0/audio/
+artwork_directory =images
+audio_directory =audio
+```
+
+## Known Bugs
+1. I haven't confirmed, but I think there is a broken or missing trim call and the space after an equals sign in the config file actually breaks things?
+2. The artwork directory gets placed inside the audio directory, so the generated RSS is actually wrong and image links will be broken.
