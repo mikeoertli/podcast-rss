@@ -53,60 +53,128 @@
 
 require 'date'
 require 'erb'
+require 'tempfile'
 include ERB::Util
 
-# Set up user variables
+# Set up user variables with defaults that can optionally be overridden in the config file
 podcast_title = ""
 podcast_description = ""
 podcast_artwork = ""
 public_url_base = ""
-item_category = "Podcasts"
+item_category = ""
+default_item_category = "Podcasts"
 audio_directory = "."
 artwork_directory = "."
 
+# Capture the current working directory so that we can properly handle the various valid combinations of
+# audio and artwork directories.
+top_level_directory = Dir.pwd
+puts "\nCurrent working directory is: " + top_level_directory
+
+# Generated values
+date_format = '%a, %d %b %Y %H:%M:%S %z'
+printed_date_format = '%d%b%Y_%H%M%S'
+current_date_time = DateTime.now.strftime(date_format)
+current_url_date_time = DateTime.now.strftime(printed_date_format)
+
+items_content = ""
+rss_outfile_path = top_level_directory + "/podcast.rss"
+rss_backup_path = top_level_directory + "/bak.podcast.rss-" + current_url_date_time
+
 puts "\nEvaluating Podcast RSS Feed Configuration..."
 # Import configuration data
-podcast_infos = IO.readlines("config.txt")
-podcast_infos.select {|i|i.start_with?('#') == false} # Ignore comment lines in input
-podcast_infos.each {|i|
-    id = i.split("=")[0].gsub(' ', '')
-    case id
+podcast_config_lines = IO.readlines("config.txt")
+cleaned_config_entries = podcast_config_lines.select {|i|i.lstrip.start_with?("#") == false} # Ignore comment lines in input
+cleaned_config_entries.each {|i|
+    fields = i.split("=")[0].gsub(' ', '')
+    # non_empty_fields = fields.reject(&:empty?)
+    case fields
     when "podcast_title"
-        podcast_title = i.split("=")[1].chomp
+        podcast_title = i.split("=")[1].chomp.lstrip
         puts "Creating podcast feed titled: " + podcast_title
     when "podcast_description"
-        podcast_description = i.split("=")[1].chomp
+        podcast_description = i.split("=")[1].chomp.lstrip
     when "podcast_artwork"
-        podcast_artwork = i.split("=")[1].chomp
+        podcast_artwork = i.split("=")[1].chomp.lstrip
     when "public_url_base"
-        public_url_base = i.split("=")[1].chomp.chomp("/")
+        public_url_base = i.split("=")[1].chomp.chomp("/").lstrip
         puts "Found Podcast public URL base: " + public_url_base
     when "audio_category"
-        item_category = i.split("=")[1].chomp
+        # No matter what, it will first attempt to use the value extracted with ffprobe from the ID3 tags.
+        # Then it falls back to the value provided via config, if any, last it would use the default set
+        # in the initialization of the default_item_category variable above.
+        default_item_category = i.split("=")[1].chomp.lstrip
+        puts "Found an audio category/type of: " + default_item_category
     when "audio_directory"
-        audio_directory = i.split("=")[1].chomp
+        audio_directory = i.split("=")[1].chomp.lstrip
+	if audio_directory == ""
+	    audio_directory = "."
+	end
+        puts "Found custom audio directory of: " + audio_directory
     when "artwork_directory"
-        artwork_directory = i.split("=")[1].chomp
+        artwork_directory = i.split("=")[1].chomp.lstrip
+        if artwork_directory == ""
+	    artwork_directory = "."
+        end
+        puts "Found custom album artwork directory of: " + artwork_directory
     else
         puts "Unrecognised config data: " + i
     end
 }
 
-# Generated values
-date_format = '%a, %d %b %Y %H:%M:%S %z'
-current_date_time = DateTime.now.strftime(date_format)
+puts "\n\n"
 
-puts "\nAdding audio files to podcast feed..."
+append_mode = File.exist?(rss_outfile_path)
+trim_to_index = -1
+if append_mode
+    puts "Found pre-existing RSS file, will append to it at the end and will only include items which the RSS feed does not already contain."
+    puts "Backing up previous version of podcast.rss to file: " + rss_backup_path
+    FileUtils.copy(rss_outfile_path, rss_backup_path)
+
+    rss_outfile = File.open(rss_outfile_path, "r")
+
+    preserved_lines = 0
+    preserved_items = 0
+    found_start_of_items = false
+    File.foreach(rss_outfile).with_index(1) do |line, index |
+        if line.include? "</channel>"
+            break
+        else
+            if line.include? "<item>"
+                preserved_items += 1
+                found_start_of_items = true
+            end
+
+            if found_start_of_items
+                preserved_lines += 1
+                items_content << line
+            end
+        end
+    end
+    rss_outfile.close
+    puts "Preserved #{preserved_lines} lines of RSS file which preserves #{preserved_items} podcast item entries."
+else
+    puts "No pre-existing RSS feed file, generating a new one..."
+end
+
+puts "\n\n"
+
+
+puts "\nProcessing audio files for podcast feed..."
 # Build the items
-items_content = ""
+
 Dir.entries(audio_directory).each do |file|
     next if file =~ /^\./  # ignore invisible files
     next unless file =~ /\.(mp3|m4a)$/  # only use audio files
 
-    file_path = "#{audio_directory}/#{file}"
-    puts "Processing file: #{file_path}"
+    relative_file_path = "#{audio_directory}/#{file}"
+    puts "Processing file: #{relative_file_path}..."
 
-    # Aquiring source metadata
+    #
+    # Extract all of the source metadata that we require.
+    #
+
+    # Note that other file types have been ruled out at this point, so this else --> mp3 assumption is safe enough
     item_audio_type = "audio/mpeg"
     if file =~ /\.(m4a)$/
         item_audio_type = "audio/x-m4a"
@@ -115,108 +183,120 @@ Dir.entries(audio_directory).each do |file|
         item_filename = File.basename(file, '').split('.mp3')[0]
     end
 
-    item_title_number = `ffprobe 2> /dev/null -show_format "#{file_path}" | grep TAG:track= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
-    item_title_source = `ffprobe 2> /dev/null -show_format "#{file_path}" | grep TAG:title= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
-    item_text_artist = `ffprobe 2> /dev/null -show_format "#{file_path}" | grep TAG:artist= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
-    item_text_albumartist = `ffprobe 2> /dev/null -show_format "#{file_path}" | grep TAG:albumartist= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
-    item_text_description = `ffprobe 2> /dev/null -show_format "#{file_path}" | grep TAG:description= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
-    item_text_synopsis = `ffprobe 2> /dev/null -show_format "#{file_path}" | grep TAG:synopsis= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s # Also known as 'long description'
-    item_text_comment = `ffprobe 2> /dev/null -show_format "#{file_path}" | grep TAG:comment= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
-    item_duration_source = `ffprobe 2> /dev/null -show_format "#{file_path}" | grep duration_time= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
-    if item_duration_source == ""
-        item_duration_source = `ffprobe 2> /dev/null -show_format "#{file_path}" | grep duration= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
-    end
-    puts "Duration (sec): #{item_duration_source}"
-
-    # Create the artwork image file
-    `ffmpeg -loglevel quiet -i "#{file_path}" -an -vcodec copy -y "#{artwork_directory}/#{item_filename}".jpg`.chomp.to_s
-
-    item_artwork = "#{item_filename}"
-    item_artwork << ".jpg"
-
-    puts "Created image file: #{artwork_directory}/#{item_artwork}"
-
-#    encoded_relative_art_path = ""
-    if artwork_directory == ""
-        encoded_relative_art_path = "#{url_encode(item_artwork)}"
+    if audio_directory == "."
+        item_url = "#{public_url_base.gsub("https", "http")}/#{url_encode(file)}"
     else
-        encoded_relative_art_path = "#{url_encode(artwork_directory)}/#{url_encode(item_artwork)}"
+        item_url = "#{public_url_base.gsub("https", "http")}/#{url_encode(audio_directory)}/#{url_encode(file)}"
     end
 
-#    item_artwork_url = "#{public_url_base.gsub("https", "http")}/#{url_encode(artwork_directory)}/#{url_encode(item_artwork)}"
-    item_artwork_url = "#{public_url_base.gsub("https", "http")}/#{encoded_relative_art_path}"
+    if items_content.index(/#{item_url}/) == nil
+        puts "Adding new entry for item: #{item_url}"
+        
+        full_metadata = `ffprobe 2> /dev/null -show_format "#{relative_file_path}"`
 
-    item_time_modified = File.mtime(file_path).strftime(date_format)
+        item_title_number = `echo "#{full_metadata}" | grep TAG:track= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
+        item_title_source = `echo "#{full_metadata}" | grep TAG:title= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
+        item_text_artist = `echo "#{full_metadata}" | grep TAG:artist= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
+        item_text_albumartist = `echo "#{full_metadata}" | grep TAG:albumartist= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
+        item_text_description = `echo "#{full_metadata}" | grep TAG:description= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
+        item_text_synopsis = `echo "#{full_metadata}" | grep TAG:synopsis= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s # Also known as 'long description'
+        item_text_comment = `echo "#{full_metadata}" | grep TAG:comment= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
+        item_duration_source = `echo "#{full_metadata}" | grep duration_time= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
+        item_category = `echo "#{full_metadata}" | grep genre= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
 
-    # Convert number to ordinal
-    if item_title_number != ""
-        item_title_number += ". "
-    end
-
-
-    # Get correct artist; defaulting to artist
-    if item_text_artist == ""
-        item_text_artist = item_text_albumartist
-    elsif item_text_albumartist.include? item_text_artist
-        item_text_artist = item_text_albumartist
-    end
-
-    # Figure out short text
-    item_text_short_array = [item_text_description, item_text_synopsis]
-    item_text_short = item_text_short_array.sort_by(&:length)[0].to_s
-    if item_text_short == ""
-        item_text_short = item_text_comment
-        if item_text_short == ""
-            item_text_short = item_text_artist
+        if item_duration_source == ""
+            item_duration_source = `echo "#{full_metadata}" | grep duration= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
         end
-    end
+#        puts "Duration (sec): #{item_duration_source}"
 
-    # Eliminate duplicates for long text
-    item_text_long_array = [item_text_artist, item_text_description, item_text_synopsis, item_text_comment]
-    item_text_long_array = item_text_long_array.select {|e|item_text_long_array.grep(Regexp.new(e)).size == 1}
-    # Make sure that no component of long text is nil
-    item_text_long_array.each { |snil| snil = snil.to_s }
-    # Combine long text and add line breaks
-    item_text_long = ""
-    item_text_long_array.each { |s| item_text_long += s + "\n"}
-    item_text_long = item_text_long.chomp()
+        # Create the artwork image file
+        `ffmpeg -loglevel quiet -i "#{relative_file_path}" -an -vcodec copy -y "#{artwork_directory}/#{item_filename}".jpg`.chomp.to_s
 
-    # Figure out author
-    item_author = item_text_artist
-    if item_author == ""
-        item_author = item_text_albumartist
-    end
+        item_artwork = "#{item_filename}"
+        item_artwork << ".jpg"
 
-    # Figure out title base
-    if item_title_source == ""
-        item_title_source = item_filename.chomp()
-    end
+        puts "Created image file: #{artwork_directory}/#{item_artwork}"
 
-    # Set remaining metadata without logic
-    item_title = item_title_number + item_title_source
+        if artwork_directory == ""
+            encoded_relative_art_path = "#{url_encode(item_artwork)}"
+        else
+            encoded_relative_art_path = "#{url_encode(artwork_directory)}/#{url_encode(item_artwork)}"
+        end
 
-    item_url = "#{public_url_base.gsub("https", "http")}/#{url_encode(audio_directory)}/#{url_encode(file)}"
-    item_size_in_bytes = File.size(file_path).to_s
-    item_duration = item_duration_source
-    item_guid = item_url + url_encode(item_time_modified)
+        item_artwork_url = "#{public_url_base.gsub("https", "http")}/#{encoded_relative_art_path}"
 
-    item_content = <<-HTML
-        <item>
-            <title>#{item_title}</title>
-            <description>#{item_text_long}</description>
-            <itunes:subtitle>#{item_text_short}</itunes:subtitle>
-            <itunes:summary>#{item_text_short}</itunes:summary>
-            <enclosure url="#{item_url}" length="#{item_size_in_bytes}" type="#{item_audio_type}" />
-            <category>#{item_category}</category>
-            <pubDate>#{item_time_modified}</pubDate>
-            <guid>#{item_guid}</guid>
-            <itunes:author>#{item_author}</itunes:author>
-            <itunes:duration>#{item_duration}</itunes:duration>
-            <itunes:image href="#{item_artwork_url}"/>
-        </item>
+        item_time_modified = File.mtime(relative_file_path).strftime(date_format)
+
+        # Convert number to ordinal
+        if item_title_number != ""
+            item_title_number += ". "
+        end
+
+
+        # Get correct artist; defaulting to artist
+        if item_text_artist == ""
+            item_text_artist = item_text_albumartist
+        elsif item_text_albumartist.include? item_text_artist
+            item_text_artist = item_text_albumartist
+        end
+
+        # Figure out short text
+        item_text_short_array = [item_text_description, item_text_synopsis]
+        item_text_short = item_text_short_array.sort_by(&:length)[0].to_s
+        if item_text_short == ""
+            item_text_short = item_text_comment
+            if item_text_short == ""
+                item_text_short = item_text_artist
+            end
+        end
+
+        # Eliminate duplicates for long text
+        item_text_long_array = [item_text_artist, item_text_description, item_text_synopsis, item_text_comment]
+        item_text_long_array = item_text_long_array.select {|e|item_text_long_array.grep(Regexp.new(e)).size == 1}
+        # Make sure that no component of long text is nil
+        item_text_long_array.each { |snil| snil = snil.to_s }
+        # Combine long text and add line breaks
+        item_text_long = ""
+        item_text_long_array.each { |s| item_text_long += s + "\n"}
+        item_text_long = item_text_long.chomp()
+
+        # Figure out author
+        item_author = item_text_artist
+        if item_author == ""
+            item_author = item_text_albumartist
+        end
+
+        # Figure out title base
+        if item_title_source == ""
+            item_title_source = item_filename.chomp()
+        end
+
+        # Set remaining metadata without logic
+        item_title = item_title_number + item_title_source
+        item_size_in_bytes = File.size(relative_file_path).to_s
+        item_duration = item_duration_source
+        item_guid = item_url + url_encode(item_time_modified)
+
+        item_content = <<-HTML
+            <item>
+                <title>#{item_title}</title>
+                <description>#{item_text_long}</description>
+                <itunes:subtitle>#{item_text_short}</itunes:subtitle>
+                <itunes:summary>#{item_text_short}</itunes:summary>
+                <enclosure url="#{item_url}" length="#{item_size_in_bytes}" type="#{item_audio_type}" />
+                <category>#{item_category}</category>
+                <pubDate>#{item_time_modified}</pubDate>
+                <guid>#{item_guid}</guid>
+                <itunes:author>#{item_author}</itunes:author>
+                <itunes:duration>#{item_duration}</itunes:duration>
+                <itunes:image href="#{item_artwork_url}"/>
+            </item>
 HTML
 
-    items_content << item_content
+        items_content << item_content
+    else
+        puts "\nSkipping adding file #{relative_file_path} to RSS file because it already contains it."
+    end
 end
 
 # Build the whole file
