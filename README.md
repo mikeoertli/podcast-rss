@@ -25,21 +25,25 @@ able to query the directory you put these files in.)
 Right now, this script requires being located in the same directory as the
 source audio files and requires a config.txt file that configures the
 output podcast name, author, artwork, and the URL of the public Dropbox
-root directory where you will keep the podcast.rss file.
+root directory where you will keep the podcast.rss file. These can be symlinks 
+though.
+
+The filter_string is an optoinal entry (can be blank after the "=" or you can omit the
+filter_string entry in config.txt entirely) that supports filtering which files are included.
+It is a crude way to support creating a podcast feed for only certain audio files, for example,
+use "Harry Potter" and you will get any audio file which has "Harry Potter" (case-insensitive) 
+in the file name (not metadata). Note that the value *can* include spaces.
 
 Once config.txt is setup, just run:
 >./create_podcast_feed.rb
 
 ## Example config.txt
 ```
-podcast_title =My Podcast
-podcast_description  My very interesting podcast
-podcast_artwork =http://www.wilwheaton.net/mt/archives/evil_monkey.gif
-public_url_base =http://123.456.789.0/audio/
-artwork_directory =images
-audio_directory =audio
+podcast_title = My Podcast
+podcast_description = My very interesting podcast
+podcast_artwork = http://www.wilwheaton.net/mt/archives/evil_monkey.gif
+public_url_base = http://123.456.789.0/audio/
+artwork_directory = images
+audio_directory = audio
+filter_string = Harry Potter
 ```
-
-## Known Bugs
-1. I haven't confirmed, but I think there is a broken or missing trim call and the space after an equals sign in the config file actually breaks things?
-2. The artwork directory gets placed inside the audio directory, so the generated RSS is actually wrong and image links will be broken.

@@ -65,6 +65,8 @@ item_category = ""
 default_item_category = "Podcasts"
 audio_directory = "."
 artwork_directory = "."
+filter_string = ""
+counter = 0
 
 # Capture the current working directory so that we can properly handle the various valid combinations of
 # audio and artwork directories.
@@ -114,9 +116,24 @@ cleaned_config_entries.each {|i|
     when "artwork_directory"
         artwork_directory = i.split("=")[1].chomp.lstrip
         if artwork_directory == ""
-	    artwork_directory = "."
+	        artwork_directory = "."
         end
         puts "Found custom album artwork directory of: " + artwork_directory
+    when "filter_string"
+        full_filter_string = filter_string = i.split("=")[1]
+        
+        if full_filter_string == nil
+            puts "No filter provided, will include all files."
+            full_filter_string = ""
+        end
+        
+        filter_string = full_filter_string.chomp.lstrip
+        if filter_string == ""
+            puts "No filter enabled"
+        else
+            puts "Filter enabled for files containing: #{filter_string}"
+        end
+
     else
         puts "Unrecognised config data: " + i
     end
@@ -153,19 +170,34 @@ if append_mode
     end
     rss_outfile.close
     puts "Preserved #{preserved_lines} lines of RSS file which preserves #{preserved_items} podcast item entries."
+    counter = preserved_items
 else
     puts "No pre-existing RSS feed file, generating a new one..."
 end
 
 puts "\n\n"
 
-
 puts "\nProcessing audio files for podcast feed..."
 # Build the items
 
+puts "\n\nFilter String is: #{filter_string}"
+
 Dir.entries(audio_directory).each do |file|
+    file_name = File.basename(file)
+    skip_reason = "Hidden file"
+    # puts "Processing file: #{file_name}"
     next if file =~ /^\./  # ignore invisible files
+    # puts "   - Is not hidden..."
+        skip_reason = "Unsupported file type (only supports mp3 and m4a)"
     next unless file =~ /\.(mp3|m4a)$/  # only use audio files
+    # puts "   - Is an audio file..."
+
+    # next unless "".casecmp("#{filter_string}")
+    # puts "   - Filter enabled - Comparing to filter string... #{filter_string}"
+        skip_reason = "File name: #{file_name} does not match filter: #{filter_string}"
+    next unless file_name.downcase.include? filter_string.downcase
+    # puts "   - FILE MATCHES FILTER. File: #{file_name}\n\n"
+        skip_reason = "the output RSS file already contains this media"
 
     relative_file_path = "#{audio_directory}/#{file}"
     puts "Processing file: #{relative_file_path}..."
@@ -178,9 +210,9 @@ Dir.entries(audio_directory).each do |file|
     item_audio_type = "audio/mpeg"
     if file =~ /\.(m4a)$/
         item_audio_type = "audio/x-m4a"
-        item_filename = File.basename(file, '').split('.m4a')[0]
+        item_filename = File.basename(file, '.m4a')
     else
-        item_filename = File.basename(file, '').split('.mp3')[0]
+        item_filename = File.basename(file, '.mp3')
     end
 
     if audio_directory == "."
@@ -294,8 +326,10 @@ Dir.entries(audio_directory).each do |file|
 HTML
 
         items_content << item_content
+
+        counter += 1
     else
-        puts "\nSkipping adding file #{relative_file_path} to RSS file because it already contains it."
+        puts "\nSkipping adding file #{relative_file_path} to RSS file because: #{skip_reason}."
     end
 end
 
