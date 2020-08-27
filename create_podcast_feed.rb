@@ -49,7 +49,8 @@
 #    set up Folder Actions as suggested by the above hint (sample AppleScript
 #    in comments at the bottom of this file).
 #  * This script uses `ffprobe` to get the source media metadata.
-#    You'll need to have the binary installed (in /usr/bin on OS X).
+#    You'll need to have the binary installed and on your $PATH (i.e. `which ffprobe` gives
+#    a valid result).
 
 require 'date'
 require 'erb'
@@ -226,6 +227,12 @@ Dir.entries(audio_directory).each do |file|
         
         full_metadata = `ffprobe 2> /dev/null -show_format "#{relative_file_path}"`
 
+#        puts "\n\n\nFULL METADATA\n"
+#        puts "#{full_metadata}"
+#        puts "\n\n"
+
+        # If there are double quotes in any of the fields, the comments/description/synopsis, for example - then this falls apart pretty quickly.
+        # TODO - add support for escaping problematic characters when parsing fields.
         item_title_number = `echo "#{full_metadata}" | grep TAG:track= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
         item_title_source = `echo "#{full_metadata}" | grep TAG:title= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
         item_text_artist = `echo "#{full_metadata}" | grep TAG:artist= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
@@ -233,12 +240,13 @@ Dir.entries(audio_directory).each do |file|
         item_text_description = `echo "#{full_metadata}" | grep TAG:description= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
         item_text_synopsis = `echo "#{full_metadata}" | grep TAG:synopsis= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s # Also known as 'long description'
         item_text_comment = `echo "#{full_metadata}" | grep TAG:comment= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
-        item_duration_source = `echo "#{full_metadata}" | grep duration_time= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
+        item_duration_source = `echo "#{full_metadata}" | grep duration= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
         item_category = `echo "#{full_metadata}" | grep genre= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
 
         if item_duration_source == ""
-            item_duration_source = `echo "#{full_metadata}" | grep duration= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
+            item_duration_source = `echo "#{full_metadata}" | grep duration_time= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
         end
+
 #        puts "Duration (sec): #{item_duration_source}"
 
         # Create the artwork image file
