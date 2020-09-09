@@ -280,7 +280,7 @@ Dir.entries(audio_directory).each do |file|
             item_text_artist = item_text_albumartist
         end
 
-        # Figure out short text
+        # Figure out short text. This is the backup text if a long description can't be found, otherwise unused.
         item_text_short_array = [item_text_description, item_text_synopsis]
         item_text_short = item_text_short_array.sort_by(&:length)[0].to_s
         if item_text_short == ""
@@ -300,7 +300,7 @@ Dir.entries(audio_directory).each do |file|
         item_text_long_array.each { |s| item_text_long += s + "\n"}
         item_text_long = item_text_long.chomp()
 
-        # Figure out author
+        # Figure out author - it is either in the artist or albumartist field
         item_author = item_text_artist
         if item_author == ""
             item_author = item_text_albumartist
@@ -317,12 +317,15 @@ Dir.entries(audio_directory).each do |file|
         item_duration = item_duration_source
         item_guid = item_url + url_encode(item_time_modified)
 
+        # <description> is the long description, the "show notes" in a podcast. Use for full description.
+        # <item:subtitle> unused
+        # <item:summary> is the short 1 (or 2?) lines of info below the title, used for the author
         item_content = <<-HTML
             <item>
                 <title>#{item_title}</title>
                 <description>#{item_text_long}</description>
-                <itunes:subtitle>#{item_text_short}</itunes:subtitle>
-                <itunes:summary>#{item_text_short}</itunes:summary>
+                <itunes:subtitle>#{item_author}</itunes:subtitle>
+                <itunes:summary>#{item_author}</itunes:summary>
                 <enclosure url="#{item_url}" length="#{item_size_in_bytes}" type="#{item_audio_type}" />
                 <category>#{item_category}</category>
                 <pubDate>#{item_time_modified}</pubDate>

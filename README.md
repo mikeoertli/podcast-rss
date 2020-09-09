@@ -31,8 +31,8 @@ though.
 The filter_string is an optoinal entry (can be blank after the "=" or you can omit the
 filter_string entry in config.txt entirely) that supports filtering which files are included.
 It is a crude way to support creating a podcast feed for only certain audio files, for example,
-use "Harry Potter" and you will get any audio file which has "Harry Potter" (case-insensitive) 
-in the file name (not metadata). Note that the value *can* include spaces.
+use "Super Adventure Series" and you will get any audio file which has "Super Adventure Series" 
+(case-insensitive) in the file name (not metadata). Note that the value *can* include spaces.
 
 Once config.txt is setup, just run:
 >./create_podcast_feed.rb
@@ -45,5 +45,32 @@ podcast_artwork = http://www.wilwheaton.net/mt/archives/evil_monkey.gif
 public_url_base = http://123.456.789.0/audio/
 artwork_directory = images
 audio_directory = audio
-filter_string = Harry Potter
+filter_string = Super Adventure Series
 ```
+
+## ID3 Field Mapping
+Unforunately, ID3 tags are really inconsistent. Audiobooks don't populate fields in a standardized way, 
+so there is some guessing when it comes to populating the podcast item fields.
+
+The `ffprobe` command that is used to populate the RSS item entry is:
+```
+ffprobe 2> /dev/null -show_format <file.mp3|.m4a>
+```
+
+I only use this with Overcast, so keep in mind that the field mappings will possibly differ for other players.
+So you might need fields mapped slightly differently.
+
+#### Author
+The author is usually in the `artist` or `albumartist` ID3 tag field, this is used as the `<itunes:summary>`
+value in the output RSS file. The actual subtitles are too inconsistent in both IF and WHERE they are present
+in the ID3 tag to use the actual subtitle, so the Author is used.
+
+#### Long Description in "Show Notes"
+The long description, i.e. full synopsys of the story, needs to go where the show notes go for podcasts.
+This is the `<description>` field in the RSS entry. This information is inconsistent in the ID3 tags, so
+we attempt to find it in the `description`, `synopsys`, and `comment` fields of the ID3 tag. Even then,
+it isn't reliably found.
+
+#### Subtitle
+The subtitle field is not used directly, though the subtitle from the ID3 tag is in the list of things that 
+can be used when populating the long description in the RSS item depending what else can be found.
