@@ -186,7 +186,7 @@ puts "\n\nFilter String is: #{filter_string}"
 Dir.entries(audio_directory).each do |file|
     file_name = File.basename(file)
     skip_reason = "Hidden file"
-    # puts "Processing file: #{file_name}"
+    puts "Processing file: #{file_name}"
     next if file =~ /^\./  # ignore invisible files
     # puts "   - Is not hidden..."
         skip_reason = "Unsupported file type (only supports mp3 and m4a)"
@@ -195,13 +195,14 @@ Dir.entries(audio_directory).each do |file|
 
     # next unless "".casecmp("#{filter_string}")
     # puts "   - Filter enabled - Comparing to filter string... #{filter_string}"
+
         skip_reason = "File name: #{file_name} does not match filter: #{filter_string}"
     next unless file_name.downcase.include? filter_string.downcase
     # puts "   - FILE MATCHES FILTER. File: #{file_name}\n\n"
         skip_reason = "the output RSS file already contains this media"
 
     relative_file_path = "#{audio_directory}/#{file}"
-    puts "Processing file: #{relative_file_path}..."
+#    puts "Processing file: #{relative_file_path}..."
 
     #
     # Extract all of the source metadata that we require.
@@ -231,15 +232,37 @@ Dir.entries(audio_directory).each do |file|
 #        puts "#{full_metadata}"
 #        puts "\n\n"
 
-        # If there are double quotes in any of the fields, the comments/description/synopsis, for example - then this falls apart pretty quickly.
+        # Known issues...
+        #   - If there are double quotes in any of the fields, the comments/description/synopsis, for example - then this falls apart pretty quickly.
+        #   - If there is a newline in a comment/description, this will only extract up to the first newline
+
         # TODO - add support for escaping problematic characters when parsing fields.
+        #      - Update: it looks like wrapping in [CDATA[<content here>]] will help for the description field where the "show notes" are.
+        #        This command gets everything in the comment field, but has assumptions on the order of the tags (i.e. copyright is always immediately following comment)
+        #            ffprobe 2> /dev/null -show_format <filename> | tr -d '\n' | sed 's/^.*TAG:comment=\(.*\).*$/\1/' | sed 's/\(.*\)TAG:copyright=.*/\1/'
+        #
+        # Misc Debug Notes:
+        #      - The comments/description field logic below assumes the ordering of ID3 tags, this command extracts the tags in order...
+        #            ffprobe 2> /dev/null -show_format <filename> | tr -d '\n' | grep -o "TAG:[a-zA-Z0-9_]*="
+        #
+        #
+        # This one works when there is no comment too (almost, there is still a single "|" that prints... work in progress)
+        #  | tr -s '\n' '|' | sed 's/^.*TAG:comment=\(.*\).*$/\1/' | sed 's/\(.*\)TAG:copyright=.*/\1/' | sed 's/^\(.+$\)/\[CDATA\[\n\1\]\]/' | sed 's/|1/\n\<p\>\n/g'
+
         item_title_number = `echo "#{full_metadata}" | grep TAG:track= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
         item_title_source = `echo "#{full_metadata}" | grep TAG:title= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
         item_text_artist = `echo "#{full_metadata}" | grep TAG:artist= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
         item_text_albumartist = `echo "#{full_metadata}" | grep TAG:albumartist= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
-        item_text_description = `echo "#{full_metadata}" | grep TAG:description= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
-        item_text_synopsis = `echo "#{full_metadata}" | grep TAG:synopsis= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s # Also known as 'long description'
-        item_text_comment = `echo "#{full_metadata}" | grep TAG:comment= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
+
+#        item_text_description = `echo "#{full_metadata}" | grep TAG:description= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
+#        item_text_description = `echo "#{full_metadata}" | tr -s '\n' '|' | sed 's/^.*TAG:description=\(.*\).*$/\1/' | sed 's/\(.*\)TAG:[a-zA-Z0-9-_]+=.*/\1/' | sed 's/^\(.+$\)/\[CDATA\[\n\1\]\]/' | sed 's/|1/\n\<p\>\n/g'`
+
+#        item_text_synopsis = `echo "#{full_metadata}" | grep TAG:synopsis= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s # Also known as 'long description'
+#        item_text_synopsis = `echo "#{full_metadata}" | tr -s '\n' '|' | sed 's/^.*TAG:synopsis=\(.*\).*$/\1/' | sed 's/\(.*\)TAG:[a-zA-Z0-9-_]+=.*/\1/' | sed 's/^\(.+$\)/\[CDATA\[\n\1\]\]/' | sed 's/|1/\n\<p\>\n/g'`
+
+#        item_text_comment = `echo "#{full_metadata}" | grep TAG:comment= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
+        item_text_comment = `echo "#{full_metadata}" | tr -s '\n' '|' | sed 's/^.*TAG:comment=\(.*\).*$/\1/' | sed 's/\(.*\)TAG:copyright=.*/\1/' | sed 's/^\(.+$\)/\[CDATA\[\n\1\]\]/' | sed 's/|1/\n\<p\>\n/g'`
+
         item_duration_source = `echo "#{full_metadata}" | grep duration= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
         item_category = `echo "#{full_metadata}" | grep genre= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
 
@@ -290,15 +313,19 @@ Dir.entries(audio_directory).each do |file|
             end
         end
 
-        # Eliminate duplicates for long text
-        item_text_long_array = [item_text_artist, item_text_description, item_text_synopsis, item_text_comment]
-        item_text_long_array = item_text_long_array.select {|e|item_text_long_array.grep(Regexp.new(e)).size == 1}
-        # Make sure that no component of long text is nil
-        item_text_long_array.each { |snil| snil = snil.to_s }
-        # Combine long text and add line breaks
-        item_text_long = ""
-        item_text_long_array.each { |s| item_text_long += s + "\n"}
-        item_text_long = item_text_long.chomp()
+#        # Eliminate duplicates for long text
+#        item_text_long_array = [item_text_artist, item_text_description, item_text_synopsis, item_text_comment]
+#        item_text_long_array = item_text_long_array.select {|e|item_text_long_array.grep(Regexp.new(e)).size == 1}
+#        # Make sure that no component of long text is nil
+#        item_text_long_array.each { |snil| snil = snil.to_s }
+#        # Combine long text and add line breaks
+#        item_text_long = ""
+#        item_text_long_array.each { |s| item_text_long += s + "\n"}
+#        item_text_long = item_text_long.chomp()
+
+        item_text_long = item_text_comment
+
+        puts "Long description extracted as: #{item_text_long}"
 
         # Figure out author - it is either in the artist or albumartist field
         item_author = item_text_artist
@@ -365,31 +392,3 @@ re = "[^\x09\x0A\x0D\x20-\uD7FF\uE000-\uFFFD\u10000-\u10FFFF]" # Regex for avoid
 content.gsub(re, "")
 output_file.write(content)
 output_file.close
-
-# = Sample AppleScript to auto-run this script. =
-# This AppleScript also touches the new file so that it's modification
-# date (and thus the pubDate in the podcast) are the date/time that you
-# put it in the folder.
-#
-# To install:
-# - Open AppleScript Editor and copy-paste the below code (minus #'s)
-# - Save the script to "/Library/Scripts/Folder Action Scripts"
-# - Control-click the podcast folder, "Services > Folder Actions Setup"
-#   and choose your script
-#
-#on adding folder items to this_folder after receiving added_items
-# 	set the_folder to POSIX path of this_folder
-# 	set the_folder_quoted to (the quoted form of the_folder as string)
-#
-# 	repeat with this_item in added_items
-# 		set the_item to POSIX path of this_item
-# 		set the_item_quoted to (the quoted form of the_item as string)
-# 		do shell script "touch " & the_item_quoted
-# 	end repeat
-#
-# 	tell application "Finder"
-# 		display dialog "cd " & the_folder_quoted & ";./podcast_feed_from_dropbox_mp3s.rb"
-# 		do shell script "cd " & the_folder_quoted & ";./podcast_feed_from_dropbox_mp3s.rb"
-# 	end tell
-#
-# end adding folder items to
