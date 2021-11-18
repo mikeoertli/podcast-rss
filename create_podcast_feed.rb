@@ -55,6 +55,7 @@
 require 'date'
 require 'erb'
 require 'tempfile'
+require 'digest'
 include ERB::Util
 
 # Set up user variables with defaults that can optionally be overridden in the config file
@@ -176,12 +177,12 @@ else
     puts "No pre-existing RSS feed file, generating a new one..."
 end
 
-puts "\n\n"
+puts "\n"
 
 puts "\nProcessing audio files for podcast feed..."
 # Build the items
 
-puts "\n\nFilter String is: #{filter_string}"
+puts "Filter String is: #{filter_string}"
 
 Dir.entries(audio_directory).each do |file|
     file_name = File.basename(file)
@@ -201,7 +202,7 @@ Dir.entries(audio_directory).each do |file|
         skip_reason = "the output RSS file already contains this media"
 
     relative_file_path = "#{audio_directory}/#{file}"
-    puts "Processing file: #{relative_file_path}..."
+    puts "\nEvaluting file: #{relative_file_path}..."
 
     #
     # Extract all of the source metadata that we require.
@@ -217,13 +218,31 @@ Dir.entries(audio_directory).each do |file|
     end
 
     if audio_directory == "."
-        item_url = "#{public_url_base.gsub("https", "http")}/#{url_encode(file)}"
+        item_encoded_relative_path = "#{url_encode(file)}"
     else
-        item_url = "#{public_url_base.gsub("https", "http")}/#{url_encode(audio_directory)}/#{url_encode(file)}"
+        item_encoded_relative_path = "#{url_encode(audio_directory)}/#{url_encode(file)}"
     end
 
-    if items_content.index(/#{item_url}/) == nil
-        puts "Adding new entry for item: #{item_url}"
+    item_url = "#{public_url_base.gsub("https", "http")}/#{item_encoded_relative_path}"
+
+#    puts "    Found item_encoded_relative_path = #{item_encoded_relative_path}"
+#    puts "    Found item_url = #{item_url}"
+
+    item_time_modified = File.mtime(relative_file_path).strftime(date_format)
+
+    # This is the base of how GUIDs used to be calculated, preserve it so that large podcast feeds don't get fully reset
+    # The full GUID used to include the publish date, but we want to bypass ID3 tag extraction
+    legacy_item_guid = item_encoded_relative_path
+
+    item_guid = item_encoded_relative_path + url_encode(item_time_modified)
+
+
+#    puts "Searching for GUID (#{item_guid}) or legacy GUID (#{legacy_item_guid}) in content..."
+
+    if items_content.index(/#{item_guid}/) == nil && items_content.index(/#{legacy_item_guid}/) == nil
+
+        puts "    No existing entry found, processing ID3 tags and adding new entry for item:"
+        puts "       #{item_url}"
         
         full_metadata = `ffprobe 2> /dev/null -show_format "#{relative_file_path}"`
 
@@ -247,7 +266,7 @@ Dir.entries(audio_directory).each do |file|
             item_duration_source = `echo "#{full_metadata}" | grep duration_time= | cut -d '=' -f 2`.sub(/^.*? = "/, '').sub(/"$/, '').chomp.to_s
         end
 
-#        puts "Duration (sec): #{item_duration_source}"
+#        puts "       Duration (sec): #{item_duration_source}"
 
         # Create the artwork image file
         `ffmpeg -loglevel quiet -i "#{relative_file_path}" -an -vcodec copy -y "#{artwork_directory}/#{item_filename}".jpg`.chomp.to_s
@@ -255,7 +274,7 @@ Dir.entries(audio_directory).each do |file|
         item_artwork = "#{item_filename}"
         item_artwork << ".jpg"
 
-        puts "Created image file: #{artwork_directory}/#{item_artwork}"
+        puts "       Created image file: #{artwork_directory}/#{item_artwork}"
 
         if artwork_directory == ""
             encoded_relative_art_path = "#{url_encode(item_artwork)}"
@@ -264,8 +283,6 @@ Dir.entries(audio_directory).each do |file|
         end
 
         item_artwork_url = "#{public_url_base.gsub("https", "http")}/#{encoded_relative_art_path}"
-
-        item_time_modified = File.mtime(relative_file_path).strftime(date_format)
 
         # Convert number to ordinal
         if item_title_number != ""
@@ -292,13 +309,43 @@ Dir.entries(audio_directory).each do |file|
 
         # Eliminate duplicates for long text
         item_text_long_array = [item_text_artist, item_text_description, item_text_synopsis, item_text_comment]
-        item_text_long_array = item_text_long_array.select {|e|item_text_long_array.grep(Regexp.new(e)).size == 1}
+        # item_text_long_array = item_text_long_array.select {|e|item_text_long_array.grep(Regexp.new(e)).size == 1}
+
+        
+        # num_items_before_unique = item_text_long_array.length
+        # puts "item_text_long_array contains #{num_items_before_unique} items before removing duplicates"
+        item_text_long_array = item_text_long_array.uniq
+
+        # num_items = item_text_long_array.length
+        # puts "item_text_long_array contains #{num_items} items before removing nils"
         # Make sure that no component of long text is nil
         item_text_long_array.each { |snil| snil = snil.to_s }
+
+        # num_items_after = item_text_long_array.length
+        # puts "item_text_long_array contains #{num_items_after} items AFTER removing nils"
+
+        # item_text_long_array_longest = item_text_long_array.max_by(&:length)
+
+        # puts "The longest item of the array is: #{item_text_long_array_longest}"
+        # puts ""
+
+        # This chunk works if we want to use all parts of the array:
         # Combine long text and add line breaks
         item_text_long = ""
-        item_text_long_array.each { |s| item_text_long += s + "\n"}
+        item_text_long = item_text_long_array.join("\n")
         item_text_long = item_text_long.chomp()
+
+        # Since newlines in ID3 tags have been problematic, they are often replaced with two spaces. 
+        # Here we just "replace" the double quotes by replacing all double spaces with newlines.
+        # This is pretty crude, but on averages seems to work well.
+        item_text_long = item_text_long.gsub("  ", "\n\n")
+
+        # puts "**Resolved long text is= #{item_text_long}"
+        # puts ""
+        # puts "**item_text_artist= #{item_text_artist}"
+        # puts "**item_text_description= #{item_text_description}"
+        # puts "**item_text_synopsis= #{item_text_synopsis}"
+        # puts "**item_text_comment= #{item_text_comment}"
 
         # Figure out author - it is either in the artist or albumartist field
         item_author = item_text_artist
@@ -312,20 +359,22 @@ Dir.entries(audio_directory).each do |file|
         end
 
         # Set remaining metadata without logic
-        item_title = item_title_number + item_title_source
+        item_title = item_title_source
         item_size_in_bytes = File.size(relative_file_path).to_s
         item_duration = item_duration_source
-        item_guid = item_url + url_encode(item_time_modified)
+
+        item_guid = Digest::MD5.hexdigest File.read(relative_file_path).to_s
+        # puts "GUID calculated as: #{item_guid}"
+        # item_guid = item_url + url_encode(item_time_modified)
 
         # <description> is the long description, the "show notes" in a podcast. Use for full description.
-        # <item:subtitle> unused
-        # <item:summary> is the short 1 (or 2?) lines of info below the title, used for the author
+        # <item:summary> unused
+        # <item:subtitle> is the short 1 (or 2?) lines of info below the title, used for the author
         item_content = <<-HTML
             <item>
                 <title>#{item_title}</title>
                 <description>#{item_text_long}</description>
                 <itunes:subtitle>#{item_author}</itunes:subtitle>
-                <itunes:summary>#{item_author}</itunes:summary>
                 <enclosure url="#{item_url}" length="#{item_size_in_bytes}" type="#{item_audio_type}" />
                 <category>#{item_category}</category>
                 <pubDate>#{item_time_modified}</pubDate>
@@ -340,7 +389,7 @@ HTML
 
         counter += 1
     else
-        puts "\nSkipping adding file #{relative_file_path} to RSS file because: #{skip_reason}."
+        puts "Skipping adding file #{relative_file_path} to RSS file because: #{skip_reason}."
     end
 end
 
