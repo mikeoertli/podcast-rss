@@ -19,7 +19,7 @@
 #
 # Inspired by http://hints.macworld.com/article.php?story=20100421153627718
 #
-# Simply put this, and some .mp3 or .m4a files in a sub-dir under a public folder
+# Simply put this, and some .mp3 or .m4a/.m4b files in a sub-dir under a public folder
 # on the web (i.e. server), create your config.txt file in the same directory, and run the
 # script. The public_url_base value value is just the URL of the directory that will contain
 # the output RSS file. It is assumed that the structure looks like this:
@@ -190,8 +190,8 @@ Dir.entries(audio_directory).each do |file|
     # puts "Processing file: #{file_name}"
     next if file =~ /^\./  # ignore invisible files
     # puts "   - Is not hidden..."
-        skip_reason = "Unsupported file type (only supports mp3 and m4a)"
-    next unless file =~ /\.(mp3|m4a)$/  # only use audio files
+        skip_reason = "Unsupported file type (only supports mp3 and m4a/m4b)"
+    next unless file =~ /\.(mp3|m4a|m4b)$/  # only use audio files
     # puts "   - Is an audio file..."
 
     # next unless "".casecmp("#{filter_string}")
@@ -213,6 +213,9 @@ Dir.entries(audio_directory).each do |file|
     if file =~ /\.(m4a)$/
         item_audio_type = "audio/x-m4a"
         item_filename = File.basename(file, '.m4a')
+    elsif file =~ /\.(m4b)$/
+        item_audio_type = "audio/x-m4b"
+        item_filename = File.basename(file, '.m4b')
     else
         item_filename = File.basename(file, '.mp3')
     end
